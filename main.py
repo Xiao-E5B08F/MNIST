@@ -5,6 +5,9 @@ import torch.optim as optim
 from torchvision import datasets, transforms
 from torch.utils.data.dataloader import default_collate
 from tqdm import tqdm
+import cv2
+import numpy as np
+from PIL import Image
 
 
 def setup_seed(seed):
@@ -92,6 +95,56 @@ def test(model, test_loader, loss_fn, device):
         100. * correct / len(test_loader.dataset)))
 
 
+def webcam_testing(model, transform, device):
+    model.to(device)
+    # Open the webcam
+    cap = cv2.VideoCapture(0)
+    if not cap.isOpened():
+        print("Error: Could not open webcam.")
+        exit()
+
+
+    while True:
+        # Capture frame-by-frame
+        ret, frame = cap.read()
+
+        # Convert the image to grayscale
+        gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
+
+        # Resize the image to 28x28 pixels
+        gray = cv2.resize(gray, (28, 28))
+
+        # Convert the image to PIL format
+        img = Image.fromarray(gray)
+
+        # Apply the transform to the image
+        img = transform(img)
+
+        # Add an extra dimension to the image
+        img = img.unsqueeze(0)
+
+        # Make a prediction
+        img = img.to(device)
+        output = model(img)
+        _, predicted = torch.max(output.data, 1)
+
+        # Display the prediction on the frame
+        cv2.putText(frame, 'Predicted: %d' % predicted.item(), (10, 30), cv2.FONT_HERSHEY_SIMPLEX, 1, (0, 255, 0), 2,
+                    cv2.LINE_AA)
+
+        # Display the resulting frame
+        cv2.imshow('frame', frame)
+
+        # Break the loop on 'q' key press
+        if cv2.waitKey(1) & 0xFF == ord('q'):
+            break
+
+    # When everything done, release the capture
+    cap.release()
+    cv2.destroyAllWindows()
+    
+
+
 def main():
     device = "cuda" if torch.cuda.is_available() else "cpu"
 
@@ -109,8 +162,8 @@ def main():
     ])
 
     # Load dataset
-    train_dataset = datasets.MNIST('./data', train=True, download=True, transform=transform)
-    test_dataset = datasets.MNIST('./data', train=False, transform=transform)
+    train_dataset = datasets.FashionMNIST('./data', train=True, download=True, transform=transform)
+    test_dataset = datasets.FashionMNIST('./data', train=False, transform=transform)
     train_loader = torch.utils.data.DataLoader(train_dataset, batch_size=BATCH_SIZE, shuffle=True)
     test_loader = torch.utils.data.DataLoader(test_dataset, batch_size=BATCH_SIZE, shuffle=False)
 
@@ -134,6 +187,8 @@ def main():
     # Test
     print("After training:")
     test(model, test_loader, loss_fn, device)
+
+    webcam_testing(model, transform, device)
 
 
 if __name__ == '__main__':
